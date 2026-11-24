@@ -47,6 +47,7 @@ load() {
 	"$PLUG/which-key.tmux"
 }
 logged() { grep -qxF -- "$1" "$STUB_LOG"; }
+not_logged() { ! logged "$1"; }
 
 # First load builds the binary and takes over the prefix.
 load
@@ -63,6 +64,30 @@ check "up-to-date binary is not rebuilt" test ! "$BIN" -nt "$PLUG/Makefile"
 touch "$PLUG/src/main.c"
 load
 check "changed sources rebuild the binary" test "$BIN" -nt "$PLUG/Makefile"
+
+# The popup command is the last argument of the root binding.
+mapfile -d '' bind_args <"$STUB_BIND"
+popup_cmd="${bind_args[-1]}"
+check "prefix key is bound in the root table" \
+	test "${bind_args[1]} ${bind_args[2]}" = "-n C-Space"
+
+# The command runs the binary despite the space and quote in its path.
+mv "$BIN" "$BIN.real"
+printf '#!/bin/sh\ntouch "%s"\n' "$TMP/ran" >"$BIN"
+chmod +x "$BIN"
+: >"$STUB_LOG"
+sh -c "$popup_cmd" 2>/dev/null
+check "popup command runs the binary at a quoted path" test -e "$TMP/ran"
+check "no fallback when the binary succeeds" \
+	not_logged "switch-client -c /dev/pts/9 -T prefix"
+
+# If the binary is missing, the key still enters prefix mode.
+rm "$BIN"
+: >"$STUB_LOG"
+sh -c "$popup_cmd" 2>/dev/null
+check "missing binary falls back to the prefix table" \
+	logged "switch-client -c /dev/pts/9 -T prefix"
+mv "$BIN.real" "$BIN"
 
 echo "$checks checks, $failed failed"
 [ "$failed" -eq 0 ]

@@ -52,9 +52,15 @@ status_lines='#{?#{==:#{status},off},0,#{?#{==:#{status},on},1,#{status}}}'
 popup_x="#{e|-:#{window_width},$popup_w}"
 popup_y="#{e|+:#{window_height},#{?#{==:#{status-position},top},$status_lines,0}}"
 
+# Shell command for the popup. The binary path is single-quoted for sh (each '
+# becomes '\''). If the binary can't run (deleted, broken build), enter the
+# prefix table anyway: `prefix` is None, so otherwise the key would do nothing.
+bin_quoted="'${BIN//\'/\'\\\'\'}'"
+popup_cmd="$bin_quoted || tmux switch-client -c \"\$(tmux show-options -sv @which-key-client)\" -T prefix"
+
 # Remember which client and pane pressed the prefix (set -F expands formats in
 # the binding's context) so the binary can replay the next key there.
 tmux bind-key -n "$prefix" \
 	set-option -sF @which-key-client '#{client_name}' '\;' \
 	set-option -sF @which-key-pane '#{pane_id}' '\;' \
-	display-popup -E -x "$popup_x" -y "$popup_y" -w "$popup_w" -h "$popup_h" "'$BIN'"
+	display-popup -E -x "$popup_x" -y "$popup_y" -w "$popup_w" -h "$popup_h" "$popup_cmd"
