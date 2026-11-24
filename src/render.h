@@ -16,7 +16,7 @@ size_t render_page_count(size_t n, size_t per_page);
 size_t render_width(const char *s);
 
 /* Write a full redraw of page `page` for a screen `cols` wide into out:
- * a title line, up to per_page entries and a footer. Control characters in
+ * up to per_page entries and a footer (the title is in tmux's popup border). Control characters in
  * labels and descriptions are shown as '?'. Returns 0 or -1. */
 int render_page(buf_t *out, const entry_list_t *entries, size_t page,
     size_t per_page, int cols);

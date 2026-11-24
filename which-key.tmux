@@ -41,7 +41,9 @@ fi
 tmux set-option -g prefix None
 
 popup_w=50
-popup_h=14
+popup_h=13
+# Drawn by tmux in the popup's top border, styled like any other popup.
+popup_title="Which Key"
 
 # Place the popup at the bottom-right of the window, whatever the panes are.
 # (-x R and -y P follow the current pane, so use numbers.) -x is the popup's
@@ -63,4 +65,4 @@ popup_cmd="$bin_quoted || tmux switch-client -c \"\$(tmux show-options -sv @whic
 tmux bind-key -n "$prefix" \
 	set-option -sF @which-key-client '#{client_name}' '\;' \
 	set-option -sF @which-key-pane '#{pane_id}' '\;' \
-	display-popup -E -x "$popup_x" -y "$popup_y" -w "$popup_w" -h "$popup_h" "$popup_cmd"
+	display-popup -E -T "$popup_title" -x "$popup_x" -y "$popup_y" -w "$popup_w" -h "$popup_h" "$popup_cmd"

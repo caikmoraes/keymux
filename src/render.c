@@ -159,17 +159,14 @@ render_page(buf_t *out, const entry_list_t *e, size_t page, size_t per_page,
 	if (buf_str(out, "\x1b[H\x1b[2J") != 0)
 		return -1;
 
-	if (buf_str(out, " " SGR_BOLD) != 0 ||
-	    buf_fit(out, "which-key", width > 1 ? width - 1 : 0) != 0 ||
-	    buf_str(out, SGR_RESET) != 0)
-		return -1;
-
+	/* The title is drawn by tmux in the popup's top border (display-popup
+	 * -T), so the first line is the first entry. */
 	for (size_t i = first; i < last; i++) {
 		const entry_t *x = &e->items[i];
 		size_t         used = 1 + keyw + ARROW_WIDTH;
 		size_t         lw = render_width(x->label);
 
-		if (buf_str(out, "\r\n " SGR_BOLD) != 0 ||
+		if (buf_str(out, i == first ? " " SGR_BOLD : "\r\n " SGR_BOLD) != 0 ||
 		    buf_fit(out, x->label, keyw) != 0 ||
 		    buf_str(out, SGR_RESET) != 0 ||
 		    buf_spaces(out, lw < keyw ? keyw - lw : 0) != 0 ||
@@ -180,7 +177,7 @@ render_page(buf_t *out, const entry_list_t *e, size_t page, size_t per_page,
 
 	snprintf(footer, sizeof footer, "%zu/%zu  C-n next  C-p prev  Esc close",
 	    page + 1, pages);
-	if (buf_str(out, "\r\n " SGR_DIM) != 0 ||
+	if (buf_str(out, last > first ? "\r\n " SGR_DIM : " " SGR_DIM) != 0 ||
 	    buf_fit(out, footer, width > 1 ? width - 1 : 0) != 0 ||
 	    buf_str(out, SGR_RESET) != 0)
 		return -1;

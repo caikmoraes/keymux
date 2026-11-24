@@ -78,23 +78,24 @@ main(void)
 	}
 	add(&e, "M-Right", "A description that is much too long to fit in the popup");
 
-	/* Page 1: title, 10 entries, footer. Key column padded to widest. */
+	/* Page 1: 10 entries, footer (the title is in the popup border). Key
+	 * column padded to widest. */
 	CHECK(render_page(&b, &e, 0, 10, 48) == 0);
 	n = plain_lines(b.data, lines, 16);
-	CHECK(n == 12);
-	CHECK_STR(lines[0], " which-key");
-	CHECK_STR(lines[1], " k0 → Something");
-	CHECK_STR(lines[11], " 1/2  C-n next  C-p prev  Esc close");
+	CHECK(n == 11);
+	CHECK(strstr(b.data, "which-key") == NULL);
+	CHECK_STR(lines[0], " k0 → Something");
+	CHECK_STR(lines[10], " 1/2  C-n next  C-p prev  Esc close");
 
 	/* Page 2: three entries; long description cut to 48 columns. */
 	b.len = 0;
 	CHECK(render_page(&b, &e, 1, 10, 48) == 0);
 	n = plain_lines(b.data, lines, 16);
-	CHECK(n == 5);
-	CHECK_STR(lines[1], " k10     → Something");
-	CHECK(render_width(lines[3]) == 48);
-	CHECK(strstr(lines[3], "…") != NULL);
-	CHECK_STR(lines[4], " 2/2  C-n next  C-p prev  Esc close");
+	CHECK(n == 4);
+	CHECK_STR(lines[0], " k10     → Something");
+	CHECK(render_width(lines[2]) == 48);
+	CHECK(strstr(lines[2], "…") != NULL);
+	CHECK_STR(lines[3], " 2/2  C-n next  C-p prev  Esc close");
 
 	/* Out-of-range page clamps to the last one. */
 	b.len = 0;

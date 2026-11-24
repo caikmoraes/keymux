@@ -76,6 +76,8 @@ mapfile -d '' bind_args <"$STUB_BIND"
 popup_cmd="${bind_args[-1]}"
 check "prefix key is bound in the root table" \
 	test "${bind_args[1]} ${bind_args[2]}" = "-n C-Space"
+check "popup title is drawn by tmux in the border" \
+	grep -qzx -- "-T" <(printf '%s\0' "${bind_args[@]}")
 
 # The command runs the binary despite the space and quote in its path.
 mv "$BIN" "$BIN.real"
