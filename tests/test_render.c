@@ -79,7 +79,7 @@ main(void)
 	add(&e, "M-Right", "A description that is much too long to fit in the popup");
 
 	/* Page 1: title, 10 entries, footer. Key column padded to widest. */
-	CHECK(render_page(&b, &e, 0, 10, 48, 12) == 0);
+	CHECK(render_page(&b, &e, 0, 10, 48) == 0);
 	n = plain_lines(b.data, lines, 16);
 	CHECK(n == 12);
 	CHECK_STR(lines[0], " which-key");
@@ -88,7 +88,7 @@ main(void)
 
 	/* Page 2: three entries; long description cut to 48 columns. */
 	b.len = 0;
-	CHECK(render_page(&b, &e, 1, 10, 48, 12) == 0);
+	CHECK(render_page(&b, &e, 1, 10, 48) == 0);
 	n = plain_lines(b.data, lines, 16);
 	CHECK(n == 5);
 	CHECK_STR(lines[1], " k10     → Something");
@@ -98,8 +98,24 @@ main(void)
 
 	/* Out-of-range page clamps to the last one. */
 	b.len = 0;
-	CHECK(render_page(&b, &e, 9, 10, 48, 12) == 0);
+	CHECK(render_page(&b, &e, 9, 10, 48) == 0);
 	CHECK(strstr(b.data, "2/2") != NULL);
+
+	/* Control characters in notes/commands (C0, DEL, 8-bit C1) are shown as
+	 * '?' and never reach the terminal. Split literals stop \x from eating
+	 * the following hex-looking letters. */
+	{
+		entry_list_t evil = { 0 };
+
+		add(&evil, "x", "A\x1b]52;c;aGVsbG8=\x07" "B\xc2\x9b" "C\x7f" "D");
+		b.len = 0;
+		CHECK(render_page(&b, &evil, 0, 10, 48) == 0);
+		CHECK(strstr(b.data, "\x1b]") == NULL);
+		CHECK(strstr(b.data, "\x07") == NULL);
+		CHECK(strstr(b.data, "\xc2\x9b") == NULL);
+		CHECK(strstr(b.data, "A?]52;c;aGVsbG8=?B?C?D") != NULL);
+		entry_list_free(&evil);
+	}
 
 	buf_free(&b);
 	entry_list_free(&e);

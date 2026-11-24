@@ -133,7 +133,7 @@ main(int argc, char **argv)
 	term_raw();
 	for (;;) {
 		screen.len = 0;
-		if (render_page(&screen, &entries, page, per_page, cols, rows) == 0) {
+		if (render_page(&screen, &entries, page, per_page, cols) == 0) {
 			fwrite(screen.data, 1, screen.len, stdout);
 			fflush(stdout);
 		}

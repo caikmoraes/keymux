@@ -78,17 +78,50 @@ prefix_bytes(const char *s, size_t cols)
 	return i;
 }
 
-/* Append s cut to at most `cols` columns, ending in "…" when cut. */
+/* Copy of s with control characters (C0, DEL, and C1 as UTF-8 U+0080-U+009F)
+ * replaced by '?', so text from binding notes and commands can't send escape
+ * sequences to the terminal. */
+static char *
+sanitize(const char *s)
+{
+	const unsigned char *p = (const unsigned char *)s;
+	char                *out = malloc(strlen(s) + 1), *o = out;
+
+	if (out == NULL)
+		return NULL;
+	for (; *p != '\0'; p++) {
+		if (*p < 0x20 || *p == 0x7f) {
+			*o++ = '?';
+		} else if (*p == 0xc2 && p[1] >= 0x80 && p[1] <= 0x9f) {
+			*o++ = '?';
+			p++;
+		} else {
+			*o++ = (char)*p;
+		}
+	}
+	*o = '\0';
+	return out;
+}
+
+/* Append s, sanitized and cut to at most `cols` columns, ending in "…" when
+ * cut. */
 static int
 buf_fit(buf_t *b, const char *s, size_t cols)
 {
-	if (render_width(s) <= cols)
-		return buf_str(b, s);
-	if (cols == 0)
-		return 0;
-	if (buf_add(b, s, prefix_bytes(s, cols - 1)) != 0)
+	char *clean = sanitize(s);
+	int   rc = 0;
+
+	if (clean == NULL)
 		return -1;
-	return buf_str(b, ELLIPSIS);
+	if (render_width(clean) <= cols)
+		rc = buf_str(b, clean);
+	else if (cols > 0) {
+		rc = buf_add(b, clean, prefix_bytes(clean, cols - 1));
+		if (rc == 0)
+			rc = buf_str(b, ELLIPSIS);
+	}
+	free(clean);
+	return rc;
 }
 
 size_t
@@ -101,13 +134,12 @@ render_page_count(size_t n, size_t per_page)
 
 int
 render_page(buf_t *out, const entry_list_t *e, size_t page, size_t per_page,
-    int cols, int rows)
+    int cols)
 {
 	size_t pages = render_page_count(e->len, per_page);
 	size_t first, last, keyw = 0, width = cols > 0 ? (size_t)cols : 1;
 	char   footer[96];
 
-	(void)rows;
 	if (page >= pages)
 		page = pages - 1;
 	first = page * per_page;
