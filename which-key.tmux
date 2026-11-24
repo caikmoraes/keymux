@@ -10,7 +10,16 @@
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$CURRENT_DIR/bin/tmux-which-key"
 
-if [ ! -x "$BIN" ]; then
+# Install when the binary is missing. A binary built from source (it has a
+# build/ directory) is also rebuilt when its sources changed, e.g. after a TPM
+# update. A downloaded binary has no build/ and is left alone.
+needs_install() {
+	[ ! -x "$BIN" ] && return 0
+	[ -d "$CURRENT_DIR/build" ] && command -v make >/dev/null 2>&1 &&
+		! make -q -C "$CURRENT_DIR" bin/tmux-which-key >/dev/null 2>&1
+}
+
+if needs_install; then
 	if ! "$CURRENT_DIR/scripts/install.sh" >/dev/null 2>&1; then
 		tmux display-message "tmux-which-key: could not download or build the binary"
 		exit 0

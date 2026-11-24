@@ -21,9 +21,14 @@ build/%.o: src/%.c $(HEADERS) | build
 build/test_%: tests/test_%.c tests/test.h $(MODULE_OBJS) | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc -o $@ $< $(MODULE_OBJS)
 
-# make test          runs every suite
-# make test T=keys   runs one suite (tests/test_keys.c)
-T ?= $(MODULES)
+build/test_plugin: tests/test_plugin.sh | build
+	cp $< $@
+	chmod +x $@
+
+# make test            runs every suite
+# make test T=keys     runs one suite (tests/test_keys.c)
+# make test T=plugin   runs the which-key.tmux suite (tests/test_plugin.sh)
+T ?= $(MODULES) plugin
 test: $(T:%=build/test_%)
 	@set -e; for t in $^; do echo "== $$t"; ./$$t; done
 
