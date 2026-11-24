@@ -5,6 +5,12 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
+
+# Build the plugin copy like TPM would, without the flags of the `make test`
+# that runs this suite (e.g. CFLAGS=-fsanitize=... without matching LDFLAGS).
+# make passes command-line variables both in MAKEFLAGS and as environment
+# variables, so clear both.
+unset MAKEFLAGS MFLAGS MAKELEVEL CFLAGS CPPFLAGS LDFLAGS
 trap 'rm -rf "$TMP"' EXIT
 
 checks=0
