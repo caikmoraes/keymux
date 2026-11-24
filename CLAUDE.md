@@ -12,27 +12,35 @@ A tmux plugin that adds a which-key feature, modelled on which-key.nvim. When th
 make                    # build bin/tmux-which-key
 make test               # build and run every suite in tests/
 make test T=keys        # run one suite (tests/test_keys.c); T takes a space-separated list
+make test T=plugin      # run tests/test_plugin.sh (which-key.tmux against a stub tmux)
 make clean
 bin/tmux-which-key --list   # print the popup's entries from the live server, no UI (read-only)
 ```
 
-Tests are plain C using the `CHECK`/`CHECK_STR` macros in `tests/test.h`. Each suite links against all module objects but not `main.c`.
+Tests are plain C using the `CHECK`/`CHECK_STR` macros in `tests/test.h`. Each suite links against all module objects but not `main.c`. `tests/test_plugin.sh` runs a copy of `which-key.tmux`, placed in a path with a space and a quote, against a stub `tmux` on `PATH` that logs its arguments. No tmux server is involved, so it's safe to run anywhere.
 
 ## How it fits together
 
-- `which-key.tmux` (TPM entry) runs `scripts/install.sh` if `bin/tmux-which-key` is missing. tmux handles the `prefix` key before any root binding, so a root binding on the prefix never fires. The script therefore saves the real prefix in `@which-key-prefix`, sets `prefix None`, and binds that key in the root table to:
-  `set -sF @which-key-client '#{client_name}' \; set -sF @which-key-pane '#{pane_id}' \; display-popup -E -x <x> -y <y> -w 50 -h 14 <bin>`.
+- `which-key.tmux` (TPM entry) runs `scripts/install.sh` if `bin/tmux-which-key` is missing. It also runs it when the binary was built from source (a `build/` directory exists) and `make -q` says it's out of date, e.g. after a TPM update. tmux handles the `prefix` key before any root binding, so a root binding on the prefix never fires. The script therefore saves the real prefix in `@which-key-prefix`, sets `prefix None`, and binds that key in the root table to:
+  `set -sF @which-key-client '#{client_name}' \; set -sF @which-key-pane '#{pane_id}' \; display-popup -E -x <x> -y <y> -w 50 -h 14 '<bin>' || tmux switch-client -c <client> -T prefix`.
+  The `||` fallback keeps prefix mode working if the binary can't run, since `prefix` is `None`. The binary path is single-quoted for sh, with `'` escaped as `'\''`.
   The position is relative to the window, whatever the pane layout. `<x>` is the popup's left column, `window_width - 50`. `<y>` is the row just below the popup: `window_height`, plus the status lines when `status-position` is top. Don't use `-x R`/`-y P`, which follow the current pane, or `-y S`, which puts the popup at the top when the status bar is at the top.
   The `set -F` calls record the client and pane that pressed the prefix, because the popup command's formats aren't documented to be expanded. On a config reload, tmux.conf sets the real prefix again and the script saves it again. `prefix2` is never touched.
 - `send-prefix` with `prefix None` has nothing to send. When the replayed key is bound to plain `send-prefix` (not `-2`), the binary sends `@which-key-prefix` to `@which-key-pane` with `send-keys` instead.
-- `main.c`: reads bindings (`tmux.c`), turns them into entries (`classify.c`), draws with `render.c`, reads keys in raw mode and decodes them with `keys.c`. `C-n`/`C-p` page and `Esc` exits. Any other key is replayed.
+- `main.c`: reads bindings (`tmux.c`), turns them into entries (`classify.c`), draws with `render.c` (which shows control characters in notes and commands as `?`, so they can't send escape sequences to the terminal), reads keys in raw mode and decodes them with `keys.c`. `C-n`/`C-p` page and `Esc` exits. Any other key is replayed.
 - Replay (`tmux_replay_argv` + `tmux_spawn_detached`): forks a child with `setsid` and SIGHUP ignored, which runs a single tmux invocation: `display-popup -C ; switch-client -T prefix ; send-keys -K -- <key>`. Closing the popup first, in the same command list, ensures the key reaches the client's key table and not the popup. Keys ending in `;` are passed as `\;`.
 - Bindings are read with `list-keys -T prefix -F '#{key_string}\t#{key_repeat}\t#{key_note}\t#{key_command}'`. Keys come back unescaped, and only the first three tabs split fields (commands may contain tabs).
 - Key names must match tmux's spelling, with modifiers in the order `C-M-S-` (e.g. `C-M-o`, `S-Up`, `BTab`, `PPage`).
 
 ## Status
 
-Unit tests pass. The owner has seen the popup open in their tmux and confirmed its position. Key replay, `send-prefix` and copy-mode behaviour still need the owner to confirm. Changes to the popup are tested by the owner, not by driving a client (see "Testing against tmux safely").
+All suites pass, including under `-fsanitize=address,undefined`. The owner has confirmed the popup position and key replay in their tmux. `send-prefix` emulation and the popup's behaviour in copy mode haven't been confirmed live yet. Changes to the popup are tested by the owner, not by driving a client (see "Testing against tmux safely").
+
+Known gaps (from the first audit; not fixed yet):
+- A failed replay (`tmux_spawn_detached` returning -1) is silent, and the key is lost.
+- `render_width` counts one column per codepoint, so wide characters (CJK, emoji) overflow a line.
+- `tmux_is_send_prefix` detects `-2` by looking for that text anywhere in the arguments.
+- `@which-key-client` is one server-wide option. Two clients pressing the prefix at the same moment could replay a key into the wrong client.
 
 ## Testing against tmux safely
 
@@ -67,4 +75,4 @@ Running tests that drive a real tmux client from inside the owner's tmux ended a
 ## Undecided: ask the owner first
 
 - The full set of `@which-key-*` options, their names, and their defaults (paging keys, page size, popup size).
-- The GitHub repository URL that release binaries are downloaded from.
+- Release downloads. The repo is `caikmoraes/tmux-which-key`, but `REPO` in `scripts/install.sh` stays empty, so installs always build from source. Before setting it, releases must publish a `SHA256SUMS` file and `install.sh` must verify the download against it.
