@@ -18,7 +18,8 @@ listing every prefix binding. Press a key and it runs as usual.
 
 ## Requirements
 
-- tmux 3.8 or later
+- tmux. The plugin has only been tested with tmux 3.8. Other versions may
+  work, but they haven't been tried.
 - `cc` and `make`. The plugin is a small C program, built from source the
   first time it loads.
 

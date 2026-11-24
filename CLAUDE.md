@@ -52,7 +52,7 @@ Running tests that drive a real tmux client from inside the owner's tmux ended a
 
 - **Binding source:** the running tmux server's `prefix` table, read with `list-keys` each time the popup opens. There is no defaults cache, and the plugin never starts a separate tmux server.
 - **Scope:** only bindings in the `prefix` key table. Bindings in `root`, `copy-mode` and custom tables are never shown.
-- **Target tmux:** the current release (3.8 as of 2026-11). Older versions are not supported for now.
+- **Target tmux:** developed and tested on the current release (3.8 as of 2026-11). Other versions aren't blocked, but none has been tested, and the README says so.
 - **Trigger:** the plugin takes over the prefix key by setting tmux's `prefix` to `None` and binding the saved key in the root table. The popup opens immediately. `prefix2` stays a plain prefix with no popup. The key pressed in the popup is replayed into tmux's `prefix` table (`switch-client -T prefix`, then `send-keys -K`), so every existing binding keeps working. The replay must happen after the popup has closed, so the key isn't delivered back into the popup. A which-key.nvim-style delay (show the popup only if no key arrives within N ms) is planned for later; don't build it until the owner asks.
 - **Closing:** `Esc` closes the popup without running any binding, like nvim.
 - **Paging:** `C-n` goes to the next page and `C-p` to the previous one. Both keys are configurable through `@which-key-*` options. Inside the popup these keys take priority over any binding on the same key. Tab, Shift-Tab, the arrow keys, PageUp, Space, `[` and `]` are tmux 3.8 prefix defaults, so they can't be used for paging.
