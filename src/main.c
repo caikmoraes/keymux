@@ -1,4 +1,4 @@
-/* tmux-which-key: runs inside `display-popup -E`, lists the prefix bindings,
+/* keymux: runs inside `display-popup -E`, lists the prefix bindings,
  * and replays the key the user presses into tmux's prefix table. */
 
 #include <errno.h>
@@ -17,9 +17,9 @@
 
 #define PER_PAGE 10
 #define ESC_WAIT_MS 30
-#define CLIENT_OPTION "@which-key-client"
-#define PANE_OPTION "@which-key-pane"
-#define PREFIX_OPTION "@which-key-prefix" /* the real prefix; tmux's is None */
+#define CLIENT_OPTION "@keymux-client"
+#define PANE_OPTION "@keymux-pane"
+#define PREFIX_OPTION "@keymux-prefix" /* the real prefix; tmux's is None */
 
 static struct termios saved_tio;
 static int            have_saved_tio;

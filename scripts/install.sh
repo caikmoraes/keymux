@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Put the binary at bin/tmux-which-key: download a release build for this
+# Put the binary at bin/keymux: download a release build for this
 # OS/CPU, or build from source if that fails.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN="$ROOT/bin/tmux-which-key"
+BIN="$ROOT/bin/keymux"
 
 # GitHub "owner/repo" that publishes release binaries. Not decided yet; while
 # empty, the download is skipped and the binary is built from source.
@@ -19,7 +19,7 @@ download() {
 	arch="$(uname -m)"
 	tmp="$(mktemp)"
 	if curl -fsSL -o "$tmp" \
-		"https://github.com/$REPO/releases/latest/download/tmux-which-key-$os-$arch"; then
+		"https://github.com/$REPO/releases/latest/download/keymux-$os-$arch"; then
 		mkdir -p "$ROOT/bin"
 		chmod +x "$tmp"
 		mv "$tmp" "$BIN"

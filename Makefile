@@ -3,7 +3,7 @@ CFLAGS   ?= -O2 -g
 CFLAGS   += -std=c11 -Wall -Wextra -Wpedantic
 CPPFLAGS += -D_XOPEN_SOURCE=700 -D_DEFAULT_SOURCE -D_DARWIN_C_SOURCE
 
-BIN         := bin/tmux-which-key
+BIN         := bin/keymux
 MODULES     := tmux classify keys render
 MODULE_OBJS := $(MODULES:%=build/%.o)
 HEADERS     := $(wildcard src/*.h)
@@ -27,7 +27,7 @@ build/test_plugin: tests/test_plugin.sh | build
 
 # make test            runs every suite
 # make test T=keys     runs one suite (tests/test_keys.c)
-# make test T=plugin   runs the which-key.tmux suite (tests/test_plugin.sh)
+# make test T=plugin   runs the keymux.tmux suite (tests/test_plugin.sh)
 T ?= $(MODULES) plugin
 test: $(T:%=build/test_%)
 	@set -e; for t in $^; do echo "== $$t"; ./$$t; done

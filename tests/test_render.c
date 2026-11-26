@@ -83,7 +83,7 @@ main(void)
 	CHECK(render_page(&b, &e, 0, 10, 48) == 0);
 	n = plain_lines(b.data, lines, 16);
 	CHECK(n == 11);
-	CHECK(strstr(b.data, "which-key") == NULL);
+	CHECK(strstr(b.data, "keymux") == NULL);
 	CHECK_STR(lines[0], " k0 → Something");
 	CHECK_STR(lines[10], " 1/2  C-n next  C-p prev  Esc close");
 

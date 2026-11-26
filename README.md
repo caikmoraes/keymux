@@ -1,12 +1,11 @@
-# tmux-which-key
+# keymux
 
 A [which-key.nvim](https://github.com/folke/which-key.nvim)-style popup for tmux.
 When you press your prefix, a popup opens at the bottom-right of the window
 listing every prefix binding. Press a key and it runs as usual.
 
 ```
-┌────────────────────────────────────────────────┐
-│ which-key                                      │
+┌ keymux ────────────────────────────────────────┐
 │ c   → Create a new window                      │
 │ d   → Detach the current client                │
 │ n   → Select the next window                   │
@@ -30,7 +29,7 @@ listing every prefix binding. Press a key and it runs as usual.
 Add the plugin to `tmux.conf`:
 
 ```tmux
-set -g @plugin 'caikmoraes/tmux-which-key'
+set -g @plugin 'caikmoraes/keymux'
 ```
 
 TPM loads plugins at its `run '…/tpm'` line, so set your prefix before that
@@ -41,13 +40,13 @@ rebuilt automatically the next time the plugin loads.
 ### Manually
 
 ```sh
-git clone https://github.com/caikmoraes/tmux-which-key ~/.tmux/plugins/tmux-which-key
+git clone https://github.com/caikmoraes/keymux ~/.tmux/plugins/keymux
 ```
 
 and add this to `tmux.conf`, after the line that sets your prefix:
 
 ```tmux
-run-shell ~/.tmux/plugins/tmux-which-key/which-key.tmux
+run-shell ~/.tmux/plugins/keymux/keymux.tmux
 ```
 
 ## Usage
@@ -74,7 +73,7 @@ The list shows the `prefix` table only, 10 entries per page:
 tmux always handles the prefix key itself, before any other binding, so a
 plugin can't attach a popup to it directly. When it loads, this plugin:
 
-1. saves your prefix in the `@which-key-prefix` option;
+1. saves your prefix in the `@keymux-prefix` option;
 2. sets tmux's `prefix` option to `None`;
 3. binds your prefix key in the root table to open the popup.
 
@@ -101,10 +100,10 @@ tmux unbind -n C-b            # the root binding the plugin added
 ## Development
 
 ```sh
-make                  # build bin/tmux-which-key
+make                  # build bin/keymux
 make test             # run every test suite
 make test T=keys      # run one suite (tmux, classify, keys, render, plugin)
-bin/tmux-which-key --list   # print the entries the popup would show
+bin/keymux --list   # print the entries the popup would show
 ```
 
 ## License
