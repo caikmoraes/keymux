@@ -1,7 +1,7 @@
 #include "tmux.h"
 
+#include <errno.h>
 #include <fcntl.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -177,56 +177,66 @@ tmux_show_server_option(const char *name)
 	return v;
 }
 
-/* An argument ending in ';' separates commands on the tmux command line;
- * "\;" keeps it literal (keys ";" and "M-;"). */
-static void
-escape_key(const char *key, char *keybuf)
+/* Append s to out as one word of tmux's command syntax. Single quotes are
+ * used when possible: tmux expands nothing inside them. Inside double quotes
+ * it expands $VAR and ~ (to $HOME, even as "~"), so a key like ~ must not be
+ * double-quoted. A word containing ' (no escape exists inside single quotes)
+ * is double-quoted with \, " and $ escaped; no tmux key holds both ' and ~.
+ * out needs room for 2 * strlen(s) + 3. */
+static char *
+quote_word(char *out, const char *s)
 {
-	size_t klen = strlen(key);
-
-	memcpy(keybuf, key, klen + 1);
-	if (klen > 0 && key[klen - 1] == ';') {
-		keybuf[klen - 1] = '\\';
-		keybuf[klen] = ';';
-		keybuf[klen + 1] = '\0';
+	if (strchr(s, '\'') == NULL) {
+		*out++ = '\'';
+		out = stpcpy(out, s);
+		*out++ = '\'';
+		*out = '\0';
+		return out;
 	}
+	*out++ = '"';
+	for (; *s != '\0'; s++) {
+		if (*s == '\\' || *s == '"' || *s == '$')
+			*out++ = '\\';
+		*out++ = *s;
+	}
+	*out++ = '"';
+	*out = '\0';
+	return out;
 }
 
-/* "tmux display-popup -C [-c client] ;" — closing the popup first makes the
- * rest reach the client/pane instead of the popup. Commands in one invocation
- * run in order. */
-static size_t
-close_popup_argv(const char *client, const char **argv)
+static char *
+build_command(const char *head, const char *mid, const char *word1,
+    const char *tail, const char *word2)
 {
-	size_t n = 0;
+	size_t len = strlen(head) + strlen(mid) + strlen(tail) + 1;
+	char  *cmd, *p;
 
-	argv[n++] = "tmux";
-	argv[n++] = "display-popup";
-	argv[n++] = "-C";
-	if (client != NULL) {
-		argv[n++] = "-c";
-		argv[n++] = client;
+	if (word1 != NULL)
+		len += 2 * strlen(word1) + 2;
+	len += 2 * strlen(word2) + 2;
+	if ((cmd = malloc(len)) == NULL)
+		return NULL;
+	p = stpcpy(cmd, head);
+	if (word1 != NULL) {
+		p = stpcpy(p, mid);
+		p = quote_word(p, word1);
 	}
-	argv[n++] = ";";
-	return n;
+	p = stpcpy(p, tail);
+	quote_word(p, word2);
+	return cmd;
 }
 
-size_t
-tmux_send_prefix_argv(const char *client, const char *pane,
-    const char *prefix, char *keybuf, const char **argv)
+char *
+tmux_replay_command(const char *key)
 {
-	size_t n = close_popup_argv(client, argv);
+	return build_command("switch-client -T prefix ; send-keys -K", "",
+	    NULL, " -- ", key);
+}
 
-	escape_key(prefix, keybuf);
-	argv[n++] = "send-keys";
-	if (pane != NULL) {
-		argv[n++] = "-t";
-		argv[n++] = pane;
-	}
-	argv[n++] = "--";
-	argv[n++] = keybuf;
-	argv[n] = NULL;
-	return n;
+char *
+tmux_send_prefix_command(const char *pane, const char *prefix)
+{
+	return build_command("send-keys", " -t ", pane, " -- ", prefix);
 }
 
 int
@@ -242,56 +252,31 @@ tmux_is_send_prefix(const char *command)
 	return strstr(rest, "-2") == NULL;
 }
 
-size_t
-tmux_replay_argv(const char *client, const char *key, char *keybuf,
-    const char **argv)
-{
-	size_t n = close_popup_argv(client, argv);
-
-	escape_key(key, keybuf);
-	argv[n++] = "switch-client";
-	if (client != NULL) {
-		argv[n++] = "-c";
-		argv[n++] = client;
-	}
-	argv[n++] = "-T";
-	argv[n++] = "prefix";
-	argv[n++] = ";";
-	argv[n++] = "send-keys";
-	if (client != NULL) {
-		argv[n++] = "-c";
-		argv[n++] = client;
-	}
-	argv[n++] = "-K";
-	argv[n++] = "--";
-	argv[n++] = keybuf;
-	argv[n] = NULL;
-	return n;
-}
-
 int
-tmux_spawn_detached(const char **argv)
+tmux_set_server_option(const char *name, const char *value)
 {
+	char *const argv[] = { "tmux", "set-option", "-s", (char *)name,
+		(char *)value, NULL };
 	pid_t pid = fork();
+	int   status;
 
 	if (pid < 0)
 		return -1;
 	if (pid == 0) {
-		/* Own session and no SIGHUP: closing the popup's pty must not
-		 * kill us before the commands are sent. */
 		int null = open("/dev/null", O_RDWR);
 
-		setsid();
-		signal(SIGHUP, SIG_IGN);
 		if (null >= 0) {
 			dup2(null, STDIN_FILENO);
 			dup2(null, STDOUT_FILENO);
 			dup2(null, STDERR_FILENO);
 		}
-		execvp(argv[0], (char *const *)argv);
+		execvp(argv[0], argv);
 		_exit(127);
 	}
-	return 0;
+	while (waitpid(pid, &status, 0) < 0)
+		if (errno != EINTR)
+			return -1;
+	return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : -1;
 }
 
 const binding_t *

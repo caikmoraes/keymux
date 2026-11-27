@@ -8,7 +8,7 @@ MODULES     := tmux classify keys render
 MODULE_OBJS := $(MODULES:%=build/%.o)
 HEADERS     := $(wildcard src/*.h)
 
-.PHONY: all test clean
+.PHONY: all test test-live clean
 
 all: $(BIN)
 
@@ -31,6 +31,17 @@ build/test_plugin: tests/test_plugin.sh | build
 T ?= $(MODULES) plugin
 test: $(T:%=build/test_%)
 	@set -e; for t in $^; do echo "== $$t"; ./$$t; done
+
+# make test-live      development only: loads keymux.tmux into a throwaway tmux
+#                      server (own socket in /tmp, -f /dev/null), attaches a
+#                      client on a pty and presses every prefix key through the
+#                      popup. Never touches the running server. Not part of
+#                      `make test`, and the plugin never runs it.
+build/live_tmux: tests/live_tmux.c | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $<
+
+test-live: $(BIN) build/live_tmux
+	./build/live_tmux .
 
 bin build:
 	mkdir -p $@

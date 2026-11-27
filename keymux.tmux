@@ -61,8 +61,18 @@ bin_quoted="'${BIN//\'/\'\\\'\'}'"
 popup_cmd="$bin_quoted || tmux switch-client -c \"\$(tmux show-options -sv @keymux-client)\" -T prefix"
 
 # Remember which client and pane pressed the prefix (set -F expands formats in
-# the binding's context) so the binary can replay the next key there.
+# the binding's context): the fallback and send-prefix use them.
+#
+# The binary doesn't replay the key itself. It stores the tmux commands for the
+# replay in @keymux-replay and exits. display-popup holds the rest of this
+# command list until the popup closes, then run-shell -C runs those commands.
+# They run as the client that pressed the prefix, which is what commands like
+# new-session need: run from another tmux process, new-session attaches the
+# session to that process instead of switching this client. The option is
+# cleared first, so Esc (or a crash) replays nothing.
 tmux bind-key -n "$prefix" \
+	set-option -s @keymux-replay '' '\;' \
 	set-option -sF @keymux-client '#{client_name}' '\;' \
 	set-option -sF @keymux-pane '#{pane_id}' '\;' \
-	display-popup -E -T "$popup_title" -x "$popup_x" -y "$popup_y" -w "$popup_w" -h "$popup_h" "$popup_cmd"
+	display-popup -E -T "$popup_title" -x "$popup_x" -y "$popup_y" -w "$popup_w" -h "$popup_h" "$popup_cmd" '\;' \
+	if-shell -F '#{@keymux-replay}' 'run-shell -C "#{@keymux-replay}"'

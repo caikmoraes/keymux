@@ -17,8 +17,8 @@
 
 #define PER_PAGE 10
 #define ESC_WAIT_MS 30
-#define CLIENT_OPTION "@keymux-client"
 #define PANE_OPTION "@keymux-pane"
+#define REPLAY_OPTION "@keymux-replay" /* run by the root binding */
 #define PREFIX_OPTION "@keymux-prefix" /* the real prefix; tmux's is None */
 
 static struct termios saved_tio;
@@ -39,7 +39,9 @@ term_raw(void)
 	t.c_cflag |= CS8;
 	t.c_cc[VMIN] = 1;
 	t.c_cc[VTIME] = 0;
-	tcsetattr(STDIN_FILENO, TCSAFLUSH, &t);
+	/* TCSANOW, not TCSAFLUSH: a key typed right after the prefix may
+	 * already be waiting, and it must be read, not discarded. */
+	tcsetattr(STDIN_FILENO, TCSANOW, &t);
 	fputs("\x1b[?25l", stdout);
 	fflush(stdout);
 }
@@ -67,32 +69,48 @@ term_size(int *cols, int *rows)
 	}
 }
 
+/* Bytes read but not decoded yet: one read can hold several keys (fast
+ * typing, key repeat), and each must be handled, not just the first. */
+static unsigned char pending[64];
+static size_t        npending;
+
 /* Read one key name into name. Returns 0, or -1 on EOF/error. */
 static int
 read_key(char *name, size_t sz)
 {
-	unsigned char buf[64];
-	ssize_t       n;
+	size_t used;
 
-	do
-		n = read(STDIN_FILENO, buf, sizeof buf);
-	while (n < 0 && errno == EINTR);
-	if (n <= 0)
-		return -1;
+	if (npending == 0) {
+		ssize_t n;
+
+		do
+			n = read(STDIN_FILENO, pending, sizeof pending);
+		while (n < 0 && errno == EINTR);
+		if (n <= 0)
+			return -1;
+		npending = (size_t)n;
+	}
 
 	/* A lone ESC may be the start of a sequence split across reads. */
-	if (n == 1 && buf[0] == 0x1b) {
+	if (npending == 1 && pending[0] == 0x1b) {
 		struct pollfd pfd = { STDIN_FILENO, POLLIN, 0 };
 
 		if (poll(&pfd, 1, ESC_WAIT_MS) > 0) {
-			ssize_t m = read(STDIN_FILENO, buf + 1, sizeof buf - 1);
+			ssize_t m = read(STDIN_FILENO, pending + 1,
+			    sizeof pending - 1);
 
 			if (m > 0)
-				n += m;
+				npending += (size_t)m;
 		}
 	}
-	if (keys_decode(buf, (size_t)n, name, sz) == 0)
+	used = keys_decode(pending, npending, name, sz);
+	if (used == 0) {
+		/* An incomplete sequence: drop it rather than wait forever. */
 		name[0] = '\0';
+		used = npending;
+	}
+	memmove(pending, pending + used, npending - used);
+	npending -= used;
 	return 0;
 }
 
@@ -103,7 +121,6 @@ main(int argc, char **argv)
 	entry_list_t   entries = { 0 };
 	buf_t          screen = { 0 };
 	char           key[32];
-	char          *client;
 	size_t         page = 0, pages, per_page = PER_PAGE;
 	int            cols, rows, replay = 0;
 
@@ -118,19 +135,22 @@ main(int argc, char **argv)
 		return 0;
 	}
 
+	/* Raw mode before anything slow (list-keys runs tmux): until then the
+	 * tty is in cooked mode, so a key typed quickly would be echoed and
+	 * held for a newline. */
+	term_raw();
+
 	/* Even if reading bindings fails, still forward the key so the prefix
 	 * keeps working. */
 	if (tmux_read_prefix_bindings(&bindings) != 0 ||
 	    classify_build(&bindings, &entries) != 0)
 		entry_list_free(&entries);
-	client = tmux_show_server_option(CLIENT_OPTION);
 
 	term_size(&cols, &rows);
 	if (rows - 2 < PER_PAGE)
 		per_page = rows > 3 ? (size_t)(rows - 2) : 1;
 	pages = render_page_count(entries.len, per_page);
 
-	term_raw();
 	for (;;) {
 		screen.len = 0;
 		if (render_page(&screen, &entries, page, per_page, cols) == 0) {
@@ -159,27 +179,23 @@ main(int argc, char **argv)
 
 	if (replay) {
 		const binding_t *b = binding_find(&bindings, key);
-		const char      *argv[20];
-		char            *prefix = NULL, *pane = NULL;
-		char             keybuf[40];
+		char            *prefix = NULL, *pane = NULL, *cmd;
 
 		if (b != NULL && tmux_is_send_prefix(b->command))
 			prefix = tmux_show_server_option(PREFIX_OPTION);
-		if (prefix != NULL && strlen(prefix) + 2 > sizeof keybuf) {
-			free(prefix);
-			prefix = NULL;
-		}
 		if (prefix != NULL) {
 			pane = tmux_show_server_option(PANE_OPTION);
-			tmux_send_prefix_argv(client, pane, prefix, keybuf, argv);
+			cmd = tmux_send_prefix_command(pane, prefix);
 		} else
-			tmux_replay_argv(client, key, keybuf, argv);
-		tmux_spawn_detached(argv);
+			cmd = tmux_replay_command(key);
+		/* The root binding runs this once the popup has closed. */
+		if (cmd != NULL)
+			tmux_set_server_option(REPLAY_OPTION, cmd);
+		free(cmd);
 		free(prefix);
 		free(pane);
 	}
 
-	free(client);
 	buf_free(&screen);
 	entry_list_free(&entries);
 	binding_list_free(&bindings);
