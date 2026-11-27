@@ -37,7 +37,7 @@ Tests are plain C using the `CHECK`/`CHECK_STR` macros in `tests/test.h`. Each s
 
 ## Status
 
-All suites pass, including under `-fsanitize=address,undefined`. The owner has confirmed the popup position in their tmux. The replay through `@keymux-replay` (2026-11-27) passes `make test-live` but hasn't been confirmed in the owner's own tmux yet. `send-prefix` emulation and the popup's behaviour in copy mode haven't been confirmed live yet. Changes to the popup are tested by the owner, not by driving a client (see "Testing against tmux safely").
+All suites pass, including under `-fsanitize=address,undefined`, and `make test-live` passes. Bindings are tested with `make test-live`, not by hand in the owner's tmux (owner's rule, 2026-11-27): any change to replay, quoting, key reading or the root binding must pass it. It covers the replay through `@keymux-replay` for every default prefix key, `send-prefix` emulation, a key typed before the popup draws, `Esc` and paging. The owner has confirmed the popup position in their tmux. The popup's behaviour in copy mode hasn't been tested. How the popup looks (position, size, drawing) is still checked by the owner, not by driving a client (see "Testing against tmux safely").
 
 Known gaps (from the first audit; not fixed yet):
 - A failed replay (`tmux_set_server_option` failing) is silent, and the key is lost.

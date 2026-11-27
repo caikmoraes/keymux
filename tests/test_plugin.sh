@@ -91,7 +91,6 @@ check "stored replay is cleared before the popup" \
 check "stored replay is run after the popup closes" \
 	test "${bind_line##*display-popup* \\; }" = 'if-shell -F #{@keymux-replay} run-shell -C "#{@keymux-replay}"'
 
-
 # The command runs the binary despite the space and quote in its path.
 mv "$BIN" "$BIN.real"
 printf '#!/bin/sh\ntouch "%s"\n' "$TMP/ran" >"$BIN"
