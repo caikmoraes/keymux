@@ -28,25 +28,23 @@ int tmux_read_prefix_bindings(binding_list_t *out);
 /* Value of a server option (`show -sv`), malloc'd; NULL if unset or empty. */
 char *tmux_show_server_option(const char *name);
 
-/* Fill argv (NULL-terminated) with the tmux command that closes the popup,
- * enters the prefix table and replays key on client (client may be NULL).
- * keybuf receives the escaped key argument and must outlive argv.
- * Returns argc. argv needs room for 20 entries, keybuf for strlen(key)+2. */
-size_t tmux_replay_argv(const char *client, const char *key, char *keybuf,
-    const char **argv);
+/* The tmux commands that replay key into the prefix table:
+ * `switch-client -T prefix ; send-keys -K -- "<key>"`. The binary stores this
+ * in @keymux-replay and the root binding runs it with `run-shell -C` after the
+ * popup closes, so the binding runs as the client that pressed the prefix.
+ * malloc'd; NULL on OOM. */
+char *tmux_replay_command(const char *key);
 
-/* Like tmux_replay_argv, but for a key bound to send-prefix: with tmux's
- * `prefix` set to None, send-prefix has nothing to send, so send the saved
- * prefix key straight to pane instead (pane may be NULL). */
-size_t tmux_send_prefix_argv(const char *client, const char *pane,
-    const char *prefix, char *keybuf, const char **argv);
+/* For a key bound to plain send-prefix: with tmux's `prefix` set to None,
+ * send-prefix has nothing to send, so send the saved prefix key to pane
+ * (pane may be NULL) instead. malloc'd; NULL on OOM. */
+char *tmux_send_prefix_command(const char *pane, const char *prefix);
 
 /* 1 if command is plain `send-prefix` (not `send-prefix -2`). */
 int tmux_is_send_prefix(const char *command);
 
-/* Run argv in a detached child, so it runs after this process (and with it
- * the popup) is gone. Returns 0 if the child was started. */
-int tmux_spawn_detached(const char **argv);
+/* `set-option -s name value`, waiting for it. Returns 0 on success. */
+int tmux_set_server_option(const char *name, const char *value);
 
 const binding_t *binding_find(const binding_list_t *l, const char *key);
 void binding_list_free(binding_list_t *l);

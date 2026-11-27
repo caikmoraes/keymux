@@ -13,38 +13,41 @@ make                    # build bin/keymux
 make test               # build and run every suite in tests/
 make test T=keys        # run one suite (tests/test_keys.c); T takes a space-separated list
 make test T=plugin      # run tests/test_plugin.sh (keymux.tmux against a stub tmux)
+make test-live          # dev only: tests/live_tmux.c drives a throwaway tmux server (see below)
 make clean
 bin/keymux --list   # print the popup's entries from the live server, no UI (read-only)
 ```
 
 Tests are plain C using the `CHECK`/`CHECK_STR` macros in `tests/test.h`. Each suite links against all module objects but not `main.c`. `tests/test_plugin.sh` runs a copy of `keymux.tmux`, placed in a path with a space and a quote, against a stub `tmux` on `PATH` that logs its arguments. No tmux server is involved, so it's safe to run anywhere.
 
+`make test-live` (`tests/live_tmux.c`, about 10 s) is the regression test for replay. It is for development only: `make test` doesn't run it, and the plugin never does (`install.sh` only runs `make`). It starts its own server on a socket in a fresh `/tmp/keymux-live.XXXXXX` (short path: sockets are limited to about 108 characters) with `-f /dev/null`, and puts a `tmux` wrapper that adds `-S <socket>` first on `PATH`. TMUX is unset and TMUX_TMPDIR points into the same directory, so the test, `keymux.tmux` and the binary can't reach the owner's server. It loads `keymux.tmux`, attaches one client on a pty it owns, and types real bytes. It binds every key in the default prefix table, plus keys that are awkward to quote, to a probe that sets `@hit` and runs `new-session -s k<N>`. Then it checks that the client switched to that session: a binding run by another tmux process names the right client in formats but attaches sessions to that process. It also checks a key typed before the popup has drawn, `send-prefix`, `Esc` and paging. Before typing a key it waits until the popup is reading keys: it pages forward and back and waits for the footer to redraw (a footer on screen can be from an older frame). The server is killed and the directory removed at the end, and on a 300 s timeout. Run against the commit before the replay fix, every key fails.
+
 ## How it fits together
 
 - `keymux.tmux` (TPM entry) runs `scripts/install.sh` if `bin/keymux` is missing. It also runs it when the binary was built from source (a `build/` directory exists) and `make -q` says it's out of date, e.g. after a TPM update. tmux handles the `prefix` key before any root binding, so a root binding on the prefix never fires. The script therefore saves the real prefix in `@keymux-prefix`, sets `prefix None`, and binds that key in the root table to:
-  `set -sF @keymux-client '#{client_name}' \; set -sF @keymux-pane '#{pane_id}' \; display-popup -E -T "keymux" -x <x> -y <y> -w 50 -h 13 '<bin>' || tmux switch-client -c <client> -T prefix`.
+  `set -s @keymux-replay '' \; set -sF @keymux-client '#{client_name}' \; set -sF @keymux-pane '#{pane_id}' \; display-popup -E -T "keymux" -x <x> -y <y> -w 50 -h 13 '<bin> || tmux switch-client -c <client> -T prefix' \; if-shell -F '#{@keymux-replay}' 'run-shell -C "#{@keymux-replay}"'`.
   The `||` fallback keeps prefix mode working if the binary can't run, since `prefix` is `None`. The binary path is single-quoted for sh, with `'` escaped as `'\''`.
   The position is relative to the window, whatever the pane layout. `<x>` is the popup's left column, `window_width - 50`. `<y>` is the row just below the popup: `window_height`, plus the status lines when `status-position` is top. Don't use `-x R`/`-y P`, which follow the current pane, or `-y S`, which puts the popup at the top when the status bar is at the top.
   The `set -F` calls record the client and pane that pressed the prefix, because the popup command's formats aren't documented to be expanded. On a config reload, tmux.conf sets the real prefix again and the script saves it again. `prefix2` is never touched.
-- `send-prefix` with `prefix None` has nothing to send. When the replayed key is bound to plain `send-prefix` (not `-2`), the binary sends `@keymux-prefix` to `@keymux-pane` with `send-keys` instead.
-- `main.c`: reads bindings (`tmux.c`), turns them into entries (`classify.c`), draws with `render.c` (which shows control characters in notes and commands as `?`, so they can't send escape sequences to the terminal), reads keys in raw mode and decodes them with `keys.c`. `C-n`/`C-p` page and `Esc` exits. Any other key is replayed.
-- Replay (`tmux_replay_argv` + `tmux_spawn_detached`): forks a child with `setsid` and SIGHUP ignored, which runs a single tmux invocation: `display-popup -C ; switch-client -T prefix ; send-keys -K -- <key>`. Closing the popup first, in the same command list, ensures the key reaches the client's key table and not the popup. Keys ending in `;` are passed as `\;`.
+- `send-prefix` with `prefix None` has nothing to send. When the replayed key is bound to plain `send-prefix` (not `-2`), the binary stores `send-keys -t <@keymux-pane> -- <@keymux-prefix>` as the replay instead.
+- `main.c`: reads bindings (`tmux.c`), turns them into entries (`classify.c`), draws with `render.c` (which shows control characters in notes and commands as `?`, so they can't send escape sequences to the terminal), reads keys in raw mode and decodes them with `keys.c`. Raw mode is set first, before `list-keys`, with `TCSANOW`: a key typed right after the prefix may already be waiting, and `TCSAFLUSH` threw it away. Bytes left over from one `read` are kept for the next key. `C-n`/`C-p` page and `Esc` exits. Any other key is replayed.
+- Replay (`tmux_replay_command` + `tmux_set_server_option`): the binary stores `switch-client -T prefix ; send-keys -K -- '<key>'` in `@keymux-replay` and exits. `display-popup` returns `CMD_RETURN_WAIT`, so the rest of the root binding waits until the popup closes. Then `run-shell -C` expands and runs the stored commands as the client that pressed the prefix. The replay must not come from a separate `tmux` process: a binding run through that process's `send-keys -K` gets that process as its client (`cmdq_insert_after` copies the client), so `new-session` attached the new session to it and never switched the user's client. The key is single-quoted for tmux's parser, where nothing is expanded. Keys with a `'` are double-quoted, with `\`, `"` and `$` escaped. A `~` must never be double-quoted, because tmux expands it to `$HOME` even inside double quotes: `~` once replayed as `/`.
 - Bindings are read with `list-keys -T prefix -F '#{key_string}\t#{key_repeat}\t#{key_note}\t#{key_command}'`. Keys come back unescaped, and only the first three tabs split fields (commands may contain tabs).
 - Key names must match tmux's spelling, with modifiers in the order `C-M-S-` (e.g. `C-M-o`, `S-Up`, `BTab`, `PPage`).
 
 ## Status
 
-All suites pass, including under `-fsanitize=address,undefined`. The owner has confirmed the popup position and key replay in their tmux. `send-prefix` emulation and the popup's behaviour in copy mode haven't been confirmed live yet. Changes to the popup are tested by the owner, not by driving a client (see "Testing against tmux safely").
+All suites pass, including under `-fsanitize=address,undefined`, and `make test-live` passes. Bindings are tested with `make test-live`, not by hand in the owner's tmux (owner's rule, 2026-11-27): any change to replay, quoting, key reading or the root binding must pass it. It covers the replay through `@keymux-replay` for every default prefix key, `send-prefix` emulation, a key typed before the popup draws, `Esc` and paging. The owner has confirmed the popup position in their tmux. The popup's behaviour in copy mode hasn't been tested. How the popup looks (position, size, drawing) is still checked by the owner, not by driving a client (see "Testing against tmux safely").
 
 Known gaps (from the first audit; not fixed yet):
-- A failed replay (`tmux_spawn_detached` returning -1) is silent, and the key is lost.
+- A failed replay (`tmux_set_server_option` failing) is silent, and the key is lost.
 - `render_width` counts one column per codepoint, so wide characters (CJK, emoji) overflow a line.
 - `tmux_is_send_prefix` detects `-2` by looking for that text anywhere in the arguments.
-- `@keymux-client` is one server-wide option. Two clients pressing the prefix at the same moment could replay a key into the wrong client.
+- `@keymux-replay` (and `@keymux-client`, used by the fallback) are server-wide options. Two clients pressing the prefix at the same moment could run each other's replay.
 
 ## Testing against tmux safely
 
-Running tests that drive a real tmux client from inside the owner's tmux ended a Claude session once. Don't attach test clients inside `script`/ptys or start extra tmux servers without asking the owner first. Read-only commands against the owner's server (`list-keys`, `display -p`, `show`) are fine.
+Running tests that drive a real tmux client from inside the owner's tmux ended a Claude session once. Don't attach test clients inside `script`/ptys or start extra tmux servers without asking the owner first. The one exception the owner approved (2026-11-27) is `make test-live`, which runs a throwaway server on its own socket and never touches the owner's server. Keep its isolation (own socket, `-S` wrapper first on `PATH`, TMUX unset, TMUX_TMPDIR in the temp dir) whenever it changes. Read-only commands against the owner's server (`list-keys`, `display -p`, `show`) are fine.
 
 ## Decided
 
@@ -69,7 +72,7 @@ Running tests that drive a real tmux client from inside the owner's tmux ended a
 - **Install:** through TPM. The `.tmux` script downloads a prebuilt binary from GitHub releases for the user's OS and CPU. If that fails, it builds from source with `cc`.
 - **Build:** a plain Makefile (`make`, `make test`, `make clean`). It needs only `cc` and `make`.
 - **Terminal I/O:** raw ANSI escape codes and termios, with no library (no ncurses). The program decodes terminal key sequences into tmux key names itself (e.g. `ESC [1;3D` → `M-Left`).
-- **Replay:** the C binary runs the replay tmux commands itself. There's no shell wrapper.
+- **Replay:** the C binary builds the replay tmux commands and stores them in `@keymux-replay`. The root binding runs them with `run-shell -C` after the popup closes, so they run as the user's client (decided 2026-11-27, after `prefix + C` → `new-session` failed to switch the client). There's no shell wrapper.
 - **Source layout:** `src/main.c`, `src/tmux.c` (run tmux, parse `list-keys`, replay), `src/classify.c` (runs: collapsing and range labels), `src/keys.c` (terminal input → tmux key names), `src/render.c` (draw the popup). `tests/` has one test file per module.
 
 ## Undecided: ask the owner first

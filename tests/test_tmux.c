@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 #include "test.h"
 #include "tmux.h"
 
@@ -27,35 +29,49 @@ test_parse(void)
 }
 
 static void
-test_replay_argv(void)
+test_replay_command(void)
 {
-	const char *argv[20];
-	char        kb[16];
-	size_t      n;
+	char *c;
 
-	n = tmux_replay_argv("/dev/pts/3", "c", kb, argv);
-	CHECK(argv[n] == NULL);
-	CHECK_STR(argv[0], "tmux");
-	CHECK_STR(argv[1], "display-popup");
-	CHECK_STR(argv[2], "-C");
-	CHECK_STR(argv[4], "/dev/pts/3");
-	CHECK_STR(argv[n - 2], "--");
-	CHECK_STR(argv[n - 1], "c");
+	c = tmux_replay_command("C");
+	CHECK_STR(c, "switch-client -T prefix ; send-keys -K -- 'C'");
+	free(c);
 
-	n = tmux_replay_argv(NULL, ";", kb, argv);
-	CHECK_STR(argv[n - 1], "\\;");
-	CHECK_STR(argv[3], ";");
+	/* Inside quotes ; is literal, so no \; is needed. */
+	c = tmux_replay_command("M-;");
+	CHECK_STR(c, "switch-client -T prefix ; send-keys -K -- 'M-;'");
+	free(c);
 
-	n = tmux_replay_argv(NULL, "M-;", kb, argv);
-	CHECK_STR(argv[n - 1], "M-\\;");
+	c = tmux_replay_command("\"");
+	CHECK_STR(c, "switch-client -T prefix ; send-keys -K -- '\"'");
+	free(c);
+
+	c = tmux_replay_command("\\");
+	CHECK_STR(c, "switch-client -T prefix ; send-keys -K -- '\\'");
+	free(c);
+
+	c = tmux_replay_command("$");
+	CHECK_STR(c, "switch-client -T prefix ; send-keys -K -- '$'");
+	free(c);
+
+	/* tmux expands ~ inside double quotes, even "~". */
+	c = tmux_replay_command("~");
+	CHECK_STR(c, "switch-client -T prefix ; send-keys -K -- '~'");
+	free(c);
+
+	c = tmux_replay_command("M-'");
+	CHECK_STR(c, "switch-client -T prefix ; send-keys -K -- \"M-'\"");
+	free(c);
+
+	c = tmux_replay_command("'");
+	CHECK_STR(c, "switch-client -T prefix ; send-keys -K -- \"'\"");
+	free(c);
 }
 
 static void
 test_send_prefix(void)
 {
-	const char *argv[20];
-	char        kb[16];
-	size_t      n;
+	char *c;
 
 	CHECK(tmux_is_send_prefix("send-prefix"));
 	CHECK(tmux_is_send_prefix("send-prefix -t {last}"));
@@ -63,25 +79,20 @@ test_send_prefix(void)
 	CHECK(!tmux_is_send_prefix("send-prefixes"));
 	CHECK(!tmux_is_send_prefix("send-keys C-Space"));
 
-	n = tmux_send_prefix_argv("/dev/pts/3", "%5", "C-Space", kb, argv);
-	CHECK(argv[n] == NULL);
-	CHECK_STR(argv[1], "display-popup");
-	CHECK_STR(argv[5], ";");
-	CHECK_STR(argv[6], "send-keys");
-	CHECK_STR(argv[7], "-t");
-	CHECK_STR(argv[8], "%5");
-	CHECK_STR(argv[n - 1], "C-Space");
+	c = tmux_send_prefix_command("%5", "C-Space");
+	CHECK_STR(c, "send-keys -t '%5' -- 'C-Space'");
+	free(c);
 
-	n = tmux_send_prefix_argv(NULL, NULL, "C-;", kb, argv);
-	CHECK_STR(argv[4], "send-keys");
-	CHECK_STR(argv[n - 1], "C-\\;");
+	c = tmux_send_prefix_command(NULL, "C-;");
+	CHECK_STR(c, "send-keys -- 'C-;'");
+	free(c);
 }
 
 int
 main(void)
 {
 	test_parse();
-	test_replay_argv();
+	test_replay_command();
 	test_send_prefix();
 	TEST_DONE();
 }

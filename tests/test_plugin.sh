@@ -71,13 +71,25 @@ touch "$PLUG/src/main.c"
 load
 check "changed sources rebuild the binary" test "$BIN" -nt "$PLUG/Makefile"
 
-# The popup command is the last argument of the root binding.
 mapfile -d '' bind_args <"$STUB_BIND"
-popup_cmd="${bind_args[-1]}"
+for i in "${!bind_args[@]}"; do
+	[ "${bind_args[$i]}" = display-popup ] && popup_at=$i
+done
+# The popup command is the last argument before the next "\;".
+for ((i = popup_at; i < ${#bind_args[@]}; i++)); do
+	[ "${bind_args[$i]}" = '\;' ] && break
+	popup_cmd="${bind_args[$i]}"
+done
 check "prefix key is bound in the root table" \
 	test "${bind_args[1]} ${bind_args[2]}" = "-n C-Space"
 check "popup title is drawn by tmux in the border" \
 	grep -qzx -- "-T" <(printf '%s\0' "${bind_args[@]}")
+# The binding clears the stored replay before the popup and runs it after.
+bind_line="${bind_args[*]}"
+check "stored replay is cleared before the popup" \
+	test "${bind_args[3]} ${bind_args[4]} ${bind_args[5]}" = "set-option -s @keymux-replay"
+check "stored replay is run after the popup closes" \
+	test "${bind_line##*display-popup* \\; }" = 'if-shell -F #{@keymux-replay} run-shell -C "#{@keymux-replay}"'
 
 # The command runs the binary despite the space and quote in its path.
 mv "$BIN" "$BIN.real"

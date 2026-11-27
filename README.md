@@ -103,6 +103,8 @@ tmux unbind -n C-b            # the root binding the plugin added
 make                  # build bin/keymux
 make test             # run every test suite
 make test T=keys      # run one suite (tmux, classify, keys, render, plugin)
+make test-live         # development only: press every prefix key through the
+                       # popup in a throwaway tmux server (never your own)
 bin/keymux --list   # print the entries the popup would show
 ```
 
